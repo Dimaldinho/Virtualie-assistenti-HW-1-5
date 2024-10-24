@@ -1,0 +1,6 @@
+Connect a local Sqlite database to your assistant, implement at least 2 functions on one table and make them available to the assistant. options:
+
+*create a record
+*read a record
+*update a record
+*delete a record
