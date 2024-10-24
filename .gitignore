@@ -1,0 +1,23 @@
+# Byte-compiled files
+*.py[cod]
+__pycache__/
+*.so
+
+# Virtual environment
+.venv/
+env/
+venv/
+
+# Python egg files
+*.egg
+*.egg-info/
+dist/
+build/
+
+.env
+
+.ipynb_checkpoints
+
+.vscode/
+.idea/
+config.json
