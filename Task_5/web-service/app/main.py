@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import assistant
+import sqlite3
+from datetime import datetime
 
 app = FastAPI()
 
@@ -24,14 +26,22 @@ async def process_message_and_respond(message: str):
     """
 
 
-    thread_id = assistant.interact_with_assistant(message)
-    print(list(thread_id)[0])
-    # Currently returns dummy data.
-    # Goal: your actual method should add the user message to the conversation history,
-    # and also return a response from the assistant
+    a_response = assistant.interact_with_assistant(message)
+    print(list(a_response)[0])
+
+    conn = sqlite3.connect("conversation_history.db")
+    cursor = conn.cursor()
+
+    cursor.execute('''
+    INSERT INTO conversation_history (user_message, ai_response, timestamp)
+    VALUES (?, ?, ?)
+    ''', (message, list(a_response)[0], datetime.now()))
+    conn.commit()
+    print("Conversation saved.")
+
     return {
-        "thread_id": list(thread_id)[0],
-        "response": list(thread_id)[1],
+        "thread_id": list(a_response)[1],
+        "response": list(a_response)[0],
         "message_received": message
     }
 
