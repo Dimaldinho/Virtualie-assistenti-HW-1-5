@@ -6,9 +6,14 @@ import time
 import requests
 import sqlite3
 
-config_path = os.path.join(os.path.dirname(__file__), '..\config.json')
+config_path = os.path.join(os.path.dirname(__file__),'..', "..", "..", "config.json")
+
+# Convert to an absolute path
+config_path = os.path.abspath(config_path)
+
 with open(config_path) as config_file:
     config = json.load(config_file)
+
 
 NEWS_API_KEY = config['NEWS_API_KEY']
 NEWS_BASE_URL = config['NEWS_BASE_URL']
@@ -18,6 +23,8 @@ QUOTE_BASE_URL = config['QUOTE_BASE_URL']
 openai.api_key = config['OPEN_API_KEY']
 
 conn = sqlite3.connect(config['conn'])
+
+threadId = config["thread_id"]
 
 tools = [
     {
@@ -131,6 +138,21 @@ assistant = openai.beta.assistants.create(
     tools=tools)
 print(f"Assistant created with ID: {assistant.id}")
 
+if not threadId:
+    # Create a new conversation thread if no thread ID exists
+    thread = openai.beta.threads.create()
+    thread_id = threadId
+    config["thread_id"] = thread_id
+
+    # Save the thread ID back to the config file
+    with open(config_path, 'w') as config_file:
+        json.dump(config, config_file, indent=4)
+
+    print(f"New thread created with ID: {thread_id}")
+else:
+    print(f"Using existing thread with ID: {threadId}")
+
+
 # add your own functions
 def get_random_quote():
     
@@ -172,21 +194,20 @@ def get_top_headlines(country='us', category='general'):
     return news
 
 def add_task_to_db(task):
-    
-    c = conn.cursor()
-    c.execute('INSERT INTO tasks (task, status) VALUES (?, ?)', (task, 'pending'))
-    conn.commit()
-    conn.close()
+    with sqlite3.connect(config['conn']) as conn:
+        c = conn.cursor()
+        c.execute('INSERT INTO tasks (task, status) VALUES (?, ?)', (task, 'pending'))
+        conn.commit()
+        conn.close()
 
 def get_tasks_from_db():
-    
-    c = conn.cursor()
-    c.execute('SELECT id, task, status FROM tasks')
-    tasks = c.fetchall()
-    conn.close()
-    if tasks:
-        return tasks
-    else:
+    try:
+        with sqlite3.connect(config['conn']) as conn:
+            c = conn.cursor()
+            c.execute('SELECT id, task, status FROM tasks')
+            return c.fetchall()
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
         return []
 
 # Function to update task status in the database
@@ -205,14 +226,10 @@ def delete_task_from_db(task_id):
     conn.commit()
     conn.close()
 
-# Create a conversation thread
-thread = openai.beta.threads.create()
-print(f"Thread created with ID: {thread.id}")
-
 def interact_with_assistant(user_input):
     print("assistent")
     message = openai.beta.threads.messages.create(
-    thread_id=thread.id,
+    thread_id=threadId,
     role="user",
     #content="Please give me a todays qoute and tell me the output"
     #content="Please give me todays news and tell me the output"
@@ -221,7 +238,7 @@ def interact_with_assistant(user_input):
     
     # Run the assistant
     run = openai.beta.threads.runs.create(
-        thread_id=thread.id,
+        thread_id=threadId,
         assistant_id=assistant.id
     )
 
@@ -229,7 +246,7 @@ def interact_with_assistant(user_input):
     attempt = 1
     while run.status != "completed":
         #print(f"Run status: {run.status}, attempt: {attempt}")
-        run = openai.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+        run = openai.beta.threads.runs.retrieve(thread_id=threadId, run_id=run.id)
 
         if run.status == "requires_action":
             break
@@ -292,7 +309,7 @@ def interact_with_assistant(user_input):
 
                 # submit the output back to assistant
                 openai.beta.threads.runs.submit_tool_outputs(
-                    thread_id=thread.id,
+                    thread_id=threadId,
                     run_id=run.id,
                     tool_outputs=[{
                         "tool_call_id": tool_call.id,
@@ -304,17 +321,17 @@ def interact_with_assistant(user_input):
     if run.status == "requires_action":
 
         # After submitting tool outputs, we need to wait for the run to complete, again
-        run = openai.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+        run = openai.beta.threads.runs.retrieve(thread_id=threadId, run_id=run.id)
         attempt = 1
         while run.status not in ["completed", "failed"]:
             #print(f"Run status: {run.status}, attempt: {attempt}")
             time.sleep(2)
-            run = openai.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+            run = openai.beta.threads.runs.retrieve(thread_id=threadId, run_id=run.id)
             attempt += 1
 
     if run.status == "completed":
         # Retrieve and print the assistant's response
-        messages = openai.beta.threads.messages.list(thread_id=thread.id)
+        messages = openai.beta.threads.messages.list(thread_id=threadId)
         final_answer = messages.data[0].content[0].text.value
         #print(f"=========\n{final_answer}")
     elif run.status == "failed":
@@ -329,7 +346,8 @@ def interact_with_assistant(user_input):
     else:
         print(f"Unexpected run status: {run.status}")
     
-    return {thread.id, final_answer}
+    return {"response": final_answer, "thread_id": threadId}
+
 
 
 

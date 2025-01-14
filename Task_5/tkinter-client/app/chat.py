@@ -5,7 +5,11 @@ import os
 from tkinter.scrolledtext import ScrolledText
 
 # Load configuration from JSON file
-config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+config_path = os.path.join(os.path.dirname(__file__),'..', "..", "..", "config.json")
+
+# Convert to an absolute path
+config_path = os.path.abspath(config_path)
+
 with open(config_path) as config_file:
     config = json.load(config_file)
 
@@ -43,8 +47,10 @@ class ChatApp:
         """Fetches the conversation history and displays it."""
         print(f"Thread ID: {THREAD_ID}, Populating screen with conversation history!")
         response = requests.get(f"{API_URL}/conversation-history/?thread_id={THREAD_ID}")
+        
         if response.status_code == 200:
             data = response.json()
+            print(data)
             self.messages_text.config(state='normal')
             for message in data['conversation_history']:
                 self.messages_text.insert(tk.END, f"{message['sender']}: {message['content']}\n")
@@ -65,7 +71,7 @@ class ChatApp:
 
             # Send message to API
             print(f"Thread ID: {THREAD_ID}, sending message: {user_message}")
-            response = requests.post(f"{API_URL}/send-message/?message={user_message}")
+            response = requests.post(f"{API_URL}/send-message/?thread_id={THREAD_ID}&message={user_message}")
             if response.status_code == 200:
                 assistant_response = response.json()["response"]
                 print(f"  Response: {assistant_response}")

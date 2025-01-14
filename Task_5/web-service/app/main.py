@@ -1,8 +1,22 @@
+import json
+import os
+import sqlite3
 from fastapi import FastAPI
 from pydantic import BaseModel
 import assistant
-import sqlite3
-from datetime import datetime
+
+# Load configuration from JSON file
+config_path = os.path.join(os.path.dirname(__file__),'..', "..", "..", "config.json")
+
+# Convert to an absolute path
+config_path = os.path.abspath(config_path)
+
+with open(config_path) as config_file:
+    config = json.load(config_file)
+
+thread_id = config["thread_id"]
+if not thread_id:
+    raise ValueError("Thread ID not found in config.json. Please ensure it is properly initialized.")
 
 app = FastAPI()
 
@@ -14,57 +28,54 @@ class Message(BaseModel):
 # Receive a dummy message and return a test response from the virtual assistant
 @app.post("/send-message/")
 async def process_message_and_respond(message: str):
-    """
-    Receive a message from the user and return a test response from the virtual assistant.
-
-    Args:
-        thread_id (str): The ID of the conversation thread.
-        message (str): The message sent by the user.
-
-    Returns:
-        dict: A dictionary containing the thread ID, the assistant's test response, and the original message.
-    """
-
-
-    a_response = assistant.interact_with_assistant(message)
-    print(list(a_response)[0])
-
-    conn = sqlite3.connect("conversation_history.db")
-    cursor = conn.cursor()
-
+    connection = sqlite3.connect("message-history.db")
+    cursor = connection.cursor()
+    print("AAAAAA = ", message)
+    # Save user message to the database
     cursor.execute('''
-    INSERT INTO conversation_history (user_message, ai_response, timestamp)
-    VALUES (?, ?, ?)
-    ''', (message, list(a_response)[0], datetime.now()))
-    conn.commit()
-    print("Conversation saved.")
+        INSERT INTO messages (thread_id, role, content)
+        VALUES (?, ?, ?)
+    ''', (thread_id, "user", message))
+
+    # Get the assistant's response
+    a_response = assistant.interact_with_assistant(message)
+    response_message = a_response["response"]
+
+    # Save the assistant's response to the database
+    cursor.execute('''
+        INSERT INTO messages (thread_id, role, content)
+        VALUES (?, ?, ?)
+    ''', (thread_id, "assistant", response_message))
+
+    # Commit changes and close the connection
+    connection.commit()
+    connection.close()
 
     return {
-        "thread_id": list(a_response)[1],
-        "response": list(a_response)[0],
+        "thread_id": thread_id,
+        "response": response_message,
         "message_received": message
     }
 
 # Retrieve a conversation history based on the thread ID, 5 messages from the user, 5 from the assistant
+
 @app.get("/conversation-history/")
 async def conversation_history(thread_id: str):
-    """
-    Retrieve the conversation history for a specific thread.
+    connection = sqlite3.connect("message-history.db")
+    cursor = connection.cursor()
 
-    Args:
-        thread_id (str): The ID of the conversation thread.
+    # Fetch messages from the database
+    cursor.execute('''
+        SELECT role, content FROM messages
+        WHERE thread_id = ?
+        ORDER BY created_at ASC
+    ''', (thread_id,))
+    rows = cursor.fetchall()
+    print(rows)
+    # Format the conversation history
+    conversation_history = [{"sender": row[0], "content": row[1]} for row in rows]
 
-    Returns:
-        dict: A dictionary containing the thread ID and a list of conversation messages, including both user and assistant messages.
-    """
-
-    # Fill the message history with dummy messages
-    user_messages = [f"User message {i} in thread {thread_id}" for i in range(1, 6)]
-    assistant_messages = [f"Assistant message {i} in thread {thread_id}" for i in range(1, 6)]
-    conversation_history = []
-    for i in range(5):
-        conversation_history.append({"sender": "user", "content": user_messages[i]})
-        conversation_history.append({"sender": "assistant", "content": assistant_messages[i]})
+    connection.close()
 
     return {
         "thread_id": thread_id,

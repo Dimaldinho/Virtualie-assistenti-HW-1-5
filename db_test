@@ -1,0 +1,20 @@
+import sqlite3
+from datetime import datetime
+
+# Connect to SQLite database (creates a new database file if it doesn't exist)
+conn = sqlite3.connect("conversation_history.db")
+cursor = conn.cursor()
+
+# Create a table for storing conversation history
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS conversation_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    thread TEXT,
+    user_message TEXT,
+    ai_response TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+''')
+
+conn.commit()
+print("Database and table created successfully.")
