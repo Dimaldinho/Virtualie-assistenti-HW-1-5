@@ -4,6 +4,13 @@ import sqlite3
 from fastapi import FastAPI
 from pydantic import BaseModel
 import assistant
+from fastapi.middleware.cors import CORSMiddleware
+
+origins = [
+    "http://localhost:8081",  # React Native web app
+    "http://127.0.0.1:8081",  # Alternative localhost
+]
+
 
 # Load configuration from JSON file
 config_path = os.path.join(os.path.dirname(__file__),'..', "..", "..", "config.json")
@@ -19,6 +26,14 @@ if not thread_id:
     raise ValueError("Thread ID not found in config.json. Please ensure it is properly initialized.")
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # List of allowed origins
+    allow_credentials=True,  # Allow cookies
+    allow_methods=["*"],  # Allow all HTTP methods (GET, POST, OPTIONS, etc.)
+    allow_headers=["*"],  # Allow all headers
+)
 
 # Model for a single message
 class Message(BaseModel):
@@ -50,7 +65,7 @@ async def process_message_and_respond(message: str):
     # Commit changes and close the connection
     connection.commit()
     connection.close()
-
+    
     return {
         "thread_id": thread_id,
         "response": response_message,
@@ -74,7 +89,8 @@ async def conversation_history(thread_id: str):
     print(rows)
     # Format the conversation history
     conversation_history = [{"sender": row[0], "content": row[1]} for row in rows]
-
+    
+    connection.commit()
     connection.close()
 
     return {
